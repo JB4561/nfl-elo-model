@@ -164,3 +164,16 @@ TEST_SEASONS = (2022, 2024)
 # from the reported numbers avoids penalising the model for a cold start.
 # (Those games still RUN -- they are how the ratings warm up.)
 BURN_IN_SEASONS = 1
+
+# ---------------------------------------------------------------------------
+# Against-the-spread evaluation
+# ---------------------------------------------------------------------------
+
+# Standard American odds on a point-spread bet. At -110 a bettor risks 110 to
+# win 100, so wins must cover losses plus the vig:
+#
+#     breakeven win rate = 110 / (110 + 100) = 0.5238
+#
+# This is the number the ATS result must clear to represent a real edge.
+# Beating 50% is not enough and is not evidence of anything.
+ATS_ODDS_AMERICAN = -110

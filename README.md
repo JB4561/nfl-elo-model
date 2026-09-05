@@ -4,9 +4,15 @@ An Elo rating system for NFL teams that predicts the **point margin** of each ga
 backtested chronologically with no look-ahead, and measured against the market
 point spread.
 
-> **This is v1.** The rating system, the backtest and the accuracy evaluation are
-> complete. Against-the-spread evaluation and plots are the remaining v1 work; a
+> **This is v1.** The rating system, the backtest, and the accuracy and
+> against-the-spread evaluations are complete. Plots are the remaining v1 work; a
 > feature-based regression layer is v2. See [Status](#status) and [Roadmap](#roadmap).
+
+**Headline result: the model does not beat the market, and it is not close.**
+Against the spread it went **401-425-28 (48.55%)** on held-out seasons, versus the
+**52.38%** needed to break even at -110 odds. That is not a marginal miss — it is
+below a coin flip, and a coin flip loses money at these prices. Details in
+[Results](#against-the-spread).
 
 ---
 
@@ -39,11 +45,8 @@ usually a model with a leak. The design priority throughout is therefore
 | Chronological no-look-ahead backtest | Complete |
 | Margin accuracy + straight-up evaluation | Complete |
 | Train-only parameter tuning | Complete (home-field advantage) |
-| **Against-the-spread (ATS) evaluation** | **Not yet implemented** |
+| Against-the-spread (ATS) evaluation | Complete |
 | **Plots** | **Not yet implemented** |
-
-No ATS win rate is reported below, because none has been computed. The 52.4%
-breakeven comparison the project is ultimately aimed at is pending.
 
 ---
 
@@ -325,6 +328,76 @@ within half a point per game of a price incorporating injuries, weather, rest,
 travel and betting flow is the interesting part of this result — but it is a gap,
 not an edge.
 
+### Against the spread
+
+The model picks whichever side it favours relative to the line — home if its
+predicted margin exceeds `spread_line`, away if it falls short. Pushes are excluded
+from the win rate, since the stake is returned and nobody wins.
+
+| | Train (2016–2021) | Test (2022–2024) |
+|---|---|---|
+| Record (W–L–P) | 801–785–36 | 401–425–28 |
+| Decided bets | 1586 | 826 |
+| **Win rate** | **50.50%** | **48.55%** |
+| Breakeven at -110 | 52.38% | 52.38% |
+| vs. breakeven | −1.88 pp | −3.83 pp |
+| Standard error | 1.26 pp | 1.74 pp |
+| p-value vs. breakeven | 0.135 | **0.028** |
+| Hypothetical ROI | −3.58% | −7.32% |
+
+**The model does not beat the closing market, on either split.** On the held-out
+seasons it finishes 3.83 points below breakeven, and that shortfall is statistically
+significant (p = 0.028) — this is not a case of a promising model falling just short
+of the vig.
+
+The more precise statement is that **the model is indistinguishable from a coin flip
+against the spread.** Its 48.55% test rate is not significantly different from 50%
+(p = 0.40); it is significantly different from the 52.38% it would need. Flat
+betting every game at -110 would have lost **7.32%** of the amount risked.
+
+This is the expected result, and it is the point of the exercise. The market price
+already contains everything this model knows — final scores — plus injuries,
+weather, rest, travel, coaching changes and the weight of money. A rating system
+built on scores alone reproducing that price to within half a point per game is a
+reasonable outcome; extracting an edge from it is not.
+
+#### Does the model do better when it disagrees more?
+
+If the model held information the market lacked, its largest disagreements should be
+its most profitable bets. Test seasons, bucketed by how far the predicted margin
+departs from the line:
+
+| Disagreement | Bets | Win rate | vs. breakeven | Std. error |
+|---|---|---|---|---|
+| 0–1 pts | 195 | 48.72% | −3.66 pp | 3.58 pp |
+| 1–2 pts | 193 | 46.63% | −5.75 pp | 3.60 pp |
+| 2–3 pts | 161 | 45.96% | −6.42 pp | 3.94 pp |
+| 3–6 pts | 228 | 49.56% | −2.82 pp | 3.31 pp |
+| 6+ pts | 49 | 59.18% | +6.80 pp | 7.14 pp |
+
+**There is no trend.** The win rate does not rise with disagreement; it wanders
+between 46% and 50% for the first four buckets, all below breakeven.
+
+The 6+ bucket is the one that invites a mistake. A 59.18% win rate looks like a
+found edge — bet only where the model disagrees by six or more points. It is not.
+That bucket contains **49 bets**, with a standard error of **7.14 pp**. The result
+sits 0.95 standard errors above breakeven (p = 0.34), which is exactly what noise
+produces at that sample size. Reporting the standard error next to every bucket is
+deliberate: without it, this row is precisely the kind of finding that gets mistaken
+for a strategy.
+
+#### Season-by-season variation
+
+| 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 |
+|---|---|---|---|---|---|---|---|---|---|
+| 54.9% | 48.5% | 51.4% | 53.1% | 48.6% | 52.4% | 49.1% | 50.0% | 46.1% | 49.5% |
+
+Individual seasons range from 46.1% to 54.9%. Three of ten clear the 52.38%
+breakeven. This spread is a useful illustration of why a single season's ATS record
+— roughly 260 bets — says almost nothing: the standard error on one season is about
+3.1 pp, so results in this range are entirely consistent with a model that has no
+edge whatsoever.
+
 ### Final ratings, end of 2024
 
 ```
@@ -388,12 +461,8 @@ time-varying or rolling HFA is the proper fix, and belongs in v2.
 
 **Remaining v1 work**
 
-- Against-the-spread evaluation: compare predicted margin to `spread_line`, report
-  the ATS win rate, and state plainly whether it clears the ~52.4% breakeven needed
-  to overcome standard −110 vig.
 - Plots: team Elo over time, prediction error distribution, and ATS performance by
-  confidence bucket (does the model do better when it disagrees with the market by
-  more?).
+  confidence bucket.
 
 **v2**
 

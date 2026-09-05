@@ -4,9 +4,9 @@ An Elo rating system for NFL teams that predicts the **point margin** of each ga
 backtested chronologically with no look-ahead, and measured against the market
 point spread.
 
-> **This is v1.** The rating system, the backtest, and the accuracy and
-> against-the-spread evaluations are complete. Plots are the remaining v1 work; a
-> feature-based regression layer is v2. See [Status](#status) and [Roadmap](#roadmap).
+> **v1 is complete.** The rating system, the backtest, the accuracy and
+> against-the-spread evaluations, and the plots are all done. A feature-based
+> regression layer is v2. See [Status](#status) and [Roadmap](#roadmap).
 
 **Headline result: the model does not beat the market, and it is not close.**
 Against the spread it went **401-425-28 (48.55%)** on held-out seasons, versus the
@@ -46,7 +46,7 @@ usually a model with a leak. The design priority throughout is therefore
 | Margin accuracy + straight-up evaluation | Complete |
 | Train-only parameter tuning | Complete (home-field advantage) |
 | Against-the-spread (ATS) evaluation | Complete |
-| **Plots** | **Not yet implemented** |
+| Plots | Complete |
 
 ---
 
@@ -59,6 +59,7 @@ python3 -m venv .venv
 .venv/bin/python backtest.py    # run the backtest, print final team ratings
 .venv/bin/python evaluate.py    # accuracy metrics vs the market baseline
 .venv/bin/python tune.py        # home-field advantage sweep (train seasons only)
+.venv/bin/python plots.py       # regenerate the figures below into plots/
 .venv/bin/python test_update.py # unit checks on the Elo update rule
 ```
 
@@ -328,6 +329,15 @@ within half a point per game of a price incorporating injuries, weather, rest,
 travel and betting flow is the interesting part of this result — but it is a gap,
 not an edge.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="plots/error_distribution_dark.png">
+  <img alt="Histogram of prediction errors on test seasons 2022-2024, comparing model and market. Both distributions are centred near zero and shaped similarly, with the market's slightly narrower and more peaked. Model MAE is 9.89, market MAE is 9.49." src="plots/error_distribution_light.png">
+</picture>
+
+Both distributions are centred and similarly shaped — the model is not making a
+different *kind* of error than the market, it is making a slightly wider version of
+the same one.
+
 ### Against the spread
 
 The model picks whichever side it favours relative to the line — home if its
@@ -375,6 +385,11 @@ departs from the line:
 | 3–6 pts | 228 | 49.56% | −2.82 pp | 3.31 pp |
 | 6+ pts | 49 | 59.18% | +6.80 pp | 7.14 pp |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="plots/ats_by_confidence_dark.png">
+  <img alt="Bar chart of ATS win rate by how far the model's predicted margin departs from the market line, test seasons 2022-2024, with plus or minus one standard error whiskers and a dashed 52.38% breakeven reference line. The first four buckets sit below breakeven at 48.7, 46.6, 46.0 and 49.6 percent. The 6+ point bucket reaches 59.2 percent but has only 49 bets and a 7.14 point standard error, so its whisker crosses the breakeven line." src="plots/ats_by_confidence_light.png">
+</picture>
+
 **There is no trend.** The win rate does not rise with disagreement; it wanders
 between 46% and 50% for the first four buckets, all below breakeven.
 
@@ -410,6 +425,19 @@ KC   1685.4      LA   1571.9
 
 Face validity is good: Philadelphia on top after winning Super Bowl LIX, followed by
 Baltimore, Buffalo, Detroit and Kansas City.
+
+The same face-validity check over time, for three teams with genuinely different
+arcs — a sustained riser, a faller, and a turnaround:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="plots/elo_over_time_dark.png">
+  <img alt="Elo ratings 2015-2024 for Kansas City, New England and Detroit. New England peaks near 1750 in 2017 then declines steadily to about 1310 by 2024. Kansas City rises sharply in 2018 and stays between roughly 1600 and 1770 thereafter. Detroit sits near 1300-1400 until 2022, then climbs to about 1740 by the end of 2024." src="plots/elo_over_time_light.png">
+</picture>
+
+The sawtooth is the between-season regression toward 1500. New England's decline
+tracks the post-Brady era, Kansas City steps up when Mahomes takes over in 2018, and
+Detroit climbs off the floor from 2022 — the ratings respond to real events without
+being told about any of them.
 
 ---
 
@@ -452,6 +480,7 @@ time-varying or rolling HFA is the proper fix, and belongs in v2.
 | [`backtest.py`](backtest.py) | The chronological, no-look-ahead loop |
 | [`evaluate.py`](evaluate.py) | Metrics and the market baseline |
 | [`tune.py`](tune.py) | Train-only parameter sweeps |
+| [`plots.py`](plots.py) | The three figures, rendered light and dark |
 | [`params.py`](params.py) | Every tunable constant, with provenance |
 | [`test_update.py`](test_update.py) | Unit checks on the update rule |
 
@@ -459,10 +488,7 @@ time-varying or rolling HFA is the proper fix, and belongs in v2.
 
 ## Roadmap
 
-**Remaining v1 work**
-
-- Plots: team Elo over time, prediction error distribution, and ATS performance by
-  confidence bucket.
+v1 is complete. Everything below is v2.
 
 **v2**
 

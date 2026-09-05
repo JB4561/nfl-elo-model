@@ -11,6 +11,6 @@ __pycache__/
 # reproduces identical results even though the upstream file grows each week.
 data/
 
-# Generated plots
-plots/
-*.png
+# NOTE: plots/ is deliberately NOT ignored. The PNGs are committed because the
+# README embeds them, and a README whose images 404 on GitHub is worse than a
+# slightly larger repo. Regenerate with: python plots.py

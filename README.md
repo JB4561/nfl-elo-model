@@ -1,4 +1,4 @@
-# NFL Elo Margin Model — v1
+# NFL Elo Margin Model v1
 
 An Elo rating system for NFL teams that predicts the **point margin** of each game,
 backtested chronologically with no look-ahead, and measured against the market

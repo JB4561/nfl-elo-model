@@ -1,0 +1,16 @@
+# Virtual environment
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Cached upstream data. Re-downloaded automatically on first run (see data.py).
+# Ignored rather than committed because it is a build artifact: the backtest
+# filters to completed seasons 2015-2024, which never change, so a fresh clone
+# reproduces identical results even though the upstream file grows each week.
+data/
+
+# Generated plots
+plots/
+*.png

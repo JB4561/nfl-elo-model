@@ -4,9 +4,15 @@ An Elo rating system for NFL teams that predicts the **point margin** of each ga
 backtested chronologically with no look-ahead, and measured against the market
 point spread.
 
-> **v1 is complete.** The rating system, the backtest, the accuracy and
-> against-the-spread evaluations, and the plots are all done. A feature-based
-> regression layer is v2. See [Status](#status) and [Roadmap](#roadmap).
+> **v1 is complete**, and the first v2 component — a live predictor for upcoming
+> games — has landed on top of it. The rating system, the backtest, the accuracy
+> and against-the-spread evaluations, and the plots are all done. A feature-based
+> regression layer is the remaining v2 work. See [Status](#status),
+> [Live predictions](#live-predictions) and [Roadmap](#roadmap).
+>
+> The live predictor reuses the v1 model unchanged — same update rule, same
+> parameters, no refitting — so every result below still describes the model that
+> generates the upcoming-week forecasts.
 
 **Headline result: the model does not beat the market, and it is not close.**
 Against the spread it went **401-425-28 (48.55%)** on held-out seasons, versus the
@@ -47,6 +53,8 @@ usually a model with a leak. The design priority throughout is therefore
 | Train-only parameter tuning | Complete (home-field advantage) |
 | Against-the-spread (ATS) evaluation | Complete |
 | Plots | Complete |
+| Live prediction for upcoming games (v2) | Complete |
+| Feature-based regression layer (v2) | Not started |
 
 ---
 
@@ -61,6 +69,8 @@ python3 -m venv .venv
 .venv/bin/python tune.py        # home-field advantage sweep (train seasons only)
 .venv/bin/python plots.py       # regenerate the figures below into plots/
 .venv/bin/python test_update.py # unit checks on the Elo update rule
+
+.venv/bin/python live_predict.py # predict the next unplayed week -> predictions.json
 ```
 
 Game data downloads automatically on first run and is cached in `data/`
@@ -471,6 +481,133 @@ time-varying or rolling HFA is the proper fix, and belongs in v2.
 
 ---
 
+## Live predictions
+
+[`live_predict.py`](live_predict.py) forecasts games that **have not been played
+yet** and writes them to [`predictions.json`](predictions.json) for a separate
+website project to consume. It imports the v1 model wholesale rather than
+reimplementing any of it.
+
+### The conceptual difference from the backtest
+
+This is the whole design, and everything else follows from it:
+
+| | Backtest | Live prediction |
+|---|---|---|
+| Target games | already played | not yet played |
+| Score available? | yes | no |
+| Sequence | predict, **then update** | **predict only** |
+
+The backtest learns from every game the moment it predicts it, because the result
+exists. A live prediction has no result to learn from, so the ratings are built
+from completed games, frozen, and then read — never written — by the upcoming
+slate. `predict_games()` contains no call to `update_ratings()`, and that absence
+is the point.
+
+One consequence worth being explicit about: **every game in a slate is predicted
+from the same ratings.** Thursday's result does not inform Sunday's prediction,
+because at the time of writing it has not happened. Re-running the script after
+Thursday moves that game into the completed set and the remaining forecasts shift.
+
+### Telling completed and upcoming games apart
+
+A **null score is the only reliable marker.** Two fields that look like they should
+help do not:
+
+- `game_type` marks the round (REG / WC / DIV / CON / SB), not the status. An
+  unplayed regular-season game is labelled `REG` exactly like a completed one.
+- `week` is likewise just the week number, present on both.
+
+`gameday` and `gametime` *are* populated for unplayed games, since the schedule is
+fixed well in advance — which is what lets the upcoming slate be ordered and
+labelled by date. Deriving the split from scores rather than dates also means a run
+launched while games are in progress behaves correctly: what matters is whether a
+result exists, not whether kickoff has passed.
+
+The script therefore loads data differently from [`data.py`](data.py) in two ways,
+both required:
+
+1. **No upper season bound.** The backtest stops at a fixed final season so its
+   evaluation window is reproducible; live ratings must include every completed
+   season up to today or they would be stale by however long ago that window ended.
+2. **Unplayed rows are kept.** `data.load_games` drops them, because a null score
+   in a rating update is meaningless. Here they are the prediction targets.
+
+The target slate is detected, not hardcoded — the earliest `(season, week)` among
+unplayed games — so each run naturally advances as the season progresses.
+
+### The season carryover guard
+
+This is the only logic the backtest does not already perform, and it is easy to get
+wrong in either direction.
+
+`run_backtest` applies carryover *at* each season boundary it crosses, but only when
+it meets the first game of the next season. After the final completed game there is
+no next game, so the boundary between the last completed season and an upcoming one
+never fires. Predicting a 2026 opener from ratings that still end at the 2025 Super
+Bowl would treat every team as identical to its end-of-last-season self.
+
+So the count is derived rather than assumed:
+
+```
+boundaries = target_season - last_completed_season
+```
+
+| Value | Situation | Behaviour |
+|---|---|---|
+| 1 | Preseason: last completed 2025, target 2026 | one regression — the normal case |
+| 0 | **Mid-season**: 2026 games already played | none — `run_backtest` already applied it internally, and a second would regress every team toward 1500 twice |
+| 2+ | An entire season missing from the data | compounds, rather than being applied once |
+
+The mid-season case is the one that would silently corrupt output if the carryover
+were applied unconditionally.
+
+### Output format
+
+`predictions.json` is a JSON array of records, written with
+`to_json(orient="records")`:
+
+```json
+{
+  "game_id": "2026_01_DEN_KC",
+  "season": 2026,
+  "week": 1,
+  "gameday": "2026-09-14",
+  "away_team": "DEN",
+  "home_team": "KC",
+  "pred_margin": -3.18,
+  "spread_line": 3.0
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `game_id` | stable key for the game |
+| `season`, `week` | which slate this is |
+| `gameday` | ISO date string (written explicitly; pandas would otherwise serialise a timestamp as epoch milliseconds) |
+| `away_team`, `home_team` | team codes |
+| `pred_margin` | model's expected home margin, **positive = home favoured** |
+| `spread_line` | market's expected home margin, same convention, or `null` |
+
+Two deliberate choices in that schema:
+
+- **`spread_line` is always present, carrying `null` when no line is posted.** Lines
+  populate closer to kickoff — week 1 of 2026 has all 16, but later weeks are
+  frequently empty — so a stable schema lets the site test one field for null rather
+  than handle two record shapes.
+- **Ratings are not published.** They are an internal quantity on an arbitrary
+  scale, and displaying one to a visitor would show a number that means nothing
+  without the whole model behind it.
+
+### A caveat that belongs next to any published forecast
+
+The model has **no demonstrated edge against the market** — see
+[Against the spread](#against-the-spread). Its largest disagreements were
+specifically shown to be noise. These forecasts are model outputs, not
+recommendations, and a site displaying them should say so.
+
+---
+
 ## Repository layout
 
 | File | Responsibility |
@@ -483,17 +620,24 @@ time-varying or rolling HFA is the proper fix, and belongs in v2.
 | [`plots.py`](plots.py) | The three figures, rendered light and dark |
 | [`params.py`](params.py) | Every tunable constant, with provenance |
 | [`test_update.py`](test_update.py) | Unit checks on the update rule |
+| [`live_predict.py`](live_predict.py) | Forecasts for upcoming, unplayed games (v2) |
+| [`predictions.json`](predictions.json) | Generated output for the website project |
 
 ---
 
 ## Roadmap
 
-v1 is complete. Everything below is v2.
+v1 is complete.
 
-**v2**
+**v2 — done**
+
+- A live in-season pipeline producing current-week forecasts. See
+  [Live predictions](#live-predictions).
+
+**v2 — remaining**
 
 - A scikit-learn regression layer: Elo rating plus engineered features → predicted
   margin.
 - Additional features: injuries, weather, rest and travel, efficiency stats.
 - Time-varying home-field advantage, addressing the non-stationarity found above.
-- A live in-season pipeline producing current-week picks.
+- Extending the live predictor beyond a single week to a full-season slate.
